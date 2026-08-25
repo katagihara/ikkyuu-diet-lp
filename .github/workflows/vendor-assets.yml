@@ -30,6 +30,10 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Probe asset host
+        timeout-minutes: 5
+        run: node scripts/vendor-assets.mjs --diagnose
+
       - name: Download CDN assets
         timeout-minutes: 10
         run: node scripts/vendor-assets.mjs

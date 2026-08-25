@@ -1,8 +1,12 @@
 /*
- * Home.tsx の ASSETS マップに書かれた外部 CDN 画像を client/public/images/ に取り込む。
- * LP の画像は Manus の CloudFront にホットリンクされているだけなので、
- * CDN が落ちるとページ上の画像が一斉に表示されなくなる。これを一度だけ実行して
- * 画像をリポジトリに同梱し、以降は自前ホスティングに切り替える。
+ * Home.tsx の ASSETS マップに書かれた外部画像を client/public/images/ に取り込む。
+ *
+ * LP の画像は Manus の CloudFront にホットリンクされているだけでリポジトリには 1 枚も無い。
+ * その CDN が配信を止めるとページ上の画像が一斉に表示されなくなるため、
+ * 画像を取得してリポジトリに同梱し、自前ホスティングへ切り替える。
+ *
+ * CDN 側の応答が 403 になるケースがあるので、取得方法を複数用意して
+ * 通るものを自動で選ぶ。--diagnose を付けると先頭 1 件で各方法の結果だけを出力する。
  */
 
 import fs from "node:fs/promises";
@@ -11,6 +15,45 @@ import path from "node:path";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const HOME_TSX = path.join(ROOT, "client/src/pages/Home.tsx");
 const OUT_DIR = path.join(ROOT, "client/public/images");
+const DIAGNOSE_ONLY = process.argv.includes("--diagnose");
+const TIMEOUT_MS = 20_000;
+
+const BROWSER_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+/** 取得方法の候補。上から順に試し、最初に成功したものを全件に使う。 */
+const STRATEGIES = [
+  {
+    name: "direct",
+    label: "CDN へそのまま取得",
+    build: (url) => ({ url, headers: {} }),
+  },
+  {
+    name: "browser-ua",
+    label: "ブラウザ相当の User-Agent 付き",
+    build: (url) => ({ url, headers: { "User-Agent": BROWSER_UA, Accept: "image/webp,image/*,*/*;q=0.8" } }),
+  },
+  {
+    name: "referer",
+    label: "公開中の LP を Referer に指定",
+    build: (url) => ({
+      url,
+      headers: {
+        "User-Agent": BROWSER_UA,
+        Accept: "image/webp,image/*,*/*;q=0.8",
+        Referer: "https://vi-vari.github.io/ikkyuu_diet-lp/",
+      },
+    }),
+  },
+  {
+    name: "wayback",
+    label: "Wayback Machine のアーカイブから取得",
+    build: (url) => ({
+      url: `https://web.archive.org/web/2id_/${url}`,
+      headers: { "User-Agent": BROWSER_UA },
+    }),
+  },
+];
 
 /** Home.tsx の ASSETS リテラルから key -> URL を取り出す */
 async function readAssetMap() {
@@ -47,17 +90,24 @@ function localName(key, url, contentType) {
   return `${key.replace(/[^A-Za-z0-9._-]/g, "-")}${ext}`;
 }
 
-const TIMEOUT_MS = 15_000;
+async function fetchOnce(strategy, sourceUrl) {
+  const { url, headers } = strategy.build(sourceUrl);
+  const res = await fetch(url, { headers, redirect: "follow", signal: AbortSignal.timeout(TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  const body = Buffer.from(await res.arrayBuffer());
+  if (body.length === 0) throw new Error("空のレスポンス");
+  const contentType = res.headers.get("content-type");
+  if (contentType && !contentType.startsWith("image/")) {
+    throw new Error(`画像ではありません (content-type: ${contentType})`);
+  }
+  return { body, contentType };
+}
 
-async function download(url) {
+async function download(strategy, url) {
   let lastError;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(TIMEOUT_MS) });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      const body = Buffer.from(await res.arrayBuffer());
-      if (body.length === 0) throw new Error("空のレスポンス");
-      return { body, contentType: res.headers.get("content-type") };
+      return await fetchOnce(strategy, url);
     } catch (e) {
       lastError = e;
       if (attempt < 2) await new Promise((r) => setTimeout(r, 1500));
@@ -66,44 +116,59 @@ async function download(url) {
   throw lastError;
 }
 
-/** 全件流す前に1件だけ試して、CDN 自体が死んでいる場合は早く失敗させる */
-async function probe([key, url]) {
-  try {
-    await download(url);
-    console.log(`疎通確認 OK: ${key}`);
-  } catch (e) {
-    throw new Error(
-      `CDN に到達できません (${url}): ${e.message ?? e}\n` +
-        "画像のホスト元である Manus の CDN が配信を停止している可能性があります。",
-    );
+/** 先頭 1 件で各方法を試し、通ったものを返す（--diagnose なら結果を出すだけ） */
+async function pickStrategy([key, url]) {
+  console.log(`取得方法の判定に ${key} (${url}) を使います\n`);
+  let chosen = null;
+  for (const strategy of STRATEGIES) {
+    try {
+      const { body } = await fetchOnce(strategy, url);
+      console.log(`  OK   ${strategy.name.padEnd(10)} ${strategy.label} — ${(body.length / 1024).toFixed(1)}KB`);
+      chosen ??= strategy;
+      if (!DIAGNOSE_ONLY) break;
+    } catch (e) {
+      console.log(`  NG   ${strategy.name.padEnd(10)} ${strategy.label} — ${e.message ?? e}`);
+    }
   }
+  console.log("");
+  return chosen;
 }
 
 /** limit 件ずつ並行で走らせる */
 async function mapWithConcurrency(items, limit, fn) {
-  const results = [];
   let cursor = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const index = cursor++;
-      results[index] = await fn(items[index]);
-    }
+    while (cursor < items.length) await fn(items[cursor++]);
   });
   await Promise.all(workers);
-  return results;
 }
 
 const assets = await readAssetMap();
-await fs.mkdir(OUT_DIR, { recursive: true });
+const strategy = await pickStrategy(assets[0]);
 
-await probe(assets[0]);
+if (!strategy) {
+  console.error(
+    "どの方法でも画像を取得できませんでした。\n" +
+      "画像のホスト元である Manus の CDN が配信を停止しており、アーカイブにも残っていません。\n" +
+      "元の画像ファイルを client/public/images/ に配置してください。",
+  );
+  process.exit(1);
+}
+
+if (DIAGNOSE_ONLY) {
+  console.log(`診断のみで終了します（使える方法: ${strategy.name}）。`);
+  process.exit(0);
+}
+
+console.log(`取得方法「${strategy.label}」で ${assets.length} 件を取得します。\n`);
+await fs.mkdir(OUT_DIR, { recursive: true });
 
 const manifest = {};
 const failures = [];
 
 await mapWithConcurrency(assets, 8, async ([key, url]) => {
   try {
-    const { body, contentType } = await download(url);
+    const { body, contentType } = await download(strategy, url);
     const name = localName(key, url, contentType);
     await fs.writeFile(path.join(OUT_DIR, name), body);
     manifest[key] = name;
@@ -114,11 +179,7 @@ await mapWithConcurrency(assets, 8, async ([key, url]) => {
   }
 });
 
-await fs.writeFile(
-  path.join(OUT_DIR, "manifest.json"),
-  `${JSON.stringify(manifest, null, 2)}\n`,
-  "utf-8",
-);
+await fs.writeFile(path.join(OUT_DIR, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf-8");
 
 console.log(`\n${assets.length - failures.length}/${assets.length} 件を取得しました。`);
 if (failures.length > 0) {
