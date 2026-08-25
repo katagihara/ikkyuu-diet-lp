@@ -47,30 +47,61 @@ function localName(key, url, contentType) {
   return `${key.replace(/[^A-Za-z0-9._-]/g, "-")}${ext}`;
 }
 
+const TIMEOUT_MS = 15_000;
+
 async function download(url) {
   let lastError;
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const res = await fetch(url, { redirect: "follow" });
+      const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(TIMEOUT_MS) });
       if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
       const body = Buffer.from(await res.arrayBuffer());
       if (body.length === 0) throw new Error("空のレスポンス");
       return { body, contentType: res.headers.get("content-type") };
     } catch (e) {
       lastError = e;
-      if (attempt < 3) await new Promise((r) => setTimeout(r, 2000 * attempt));
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 1500));
     }
   }
   throw lastError;
 }
 
+/** 全件流す前に1件だけ試して、CDN 自体が死んでいる場合は早く失敗させる */
+async function probe([key, url]) {
+  try {
+    await download(url);
+    console.log(`疎通確認 OK: ${key}`);
+  } catch (e) {
+    throw new Error(
+      `CDN に到達できません (${url}): ${e.message ?? e}\n` +
+        "画像のホスト元である Manus の CDN が配信を停止している可能性があります。",
+    );
+  }
+}
+
+/** limit 件ずつ並行で走らせる */
+async function mapWithConcurrency(items, limit, fn) {
+  const results = [];
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await fn(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 const assets = await readAssetMap();
 await fs.mkdir(OUT_DIR, { recursive: true });
+
+await probe(assets[0]);
 
 const manifest = {};
 const failures = [];
 
-for (const [key, url] of assets) {
+await mapWithConcurrency(assets, 8, async ([key, url]) => {
   try {
     const { body, contentType } = await download(url);
     const name = localName(key, url, contentType);
@@ -81,7 +112,7 @@ for (const [key, url] of assets) {
     failures.push({ key, url, reason: String(e.message ?? e) });
     console.log(`FAIL ${key.padEnd(12)} ${url}\n     ${e.message ?? e}`);
   }
-}
+});
 
 await fs.writeFile(
   path.join(OUT_DIR, "manifest.json"),
