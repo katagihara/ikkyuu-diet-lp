@@ -12,88 +12,47 @@ import { useState } from "react";
 // MapView removed: replaced with Google Maps embed iframe for GitHub Pages compatibility
 
 
-const CDN = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410806327/JA5n7xr5WMnAweWKrFvH5o";
+// 画像は client/public/images/ に同梱している。
+// 以前は Manus の CDN にホットリンクしていたが、配信が止まった時点で
+// ページ上の画像が一斉に表示されなくなったため、自前ホスティングに切り替えた。
+// import.meta.env.BASE_URL を挟むことで GitHub Pages のサブパス配信にも対応する。
+// 各ファイルが LP のどこで使われるかは docs/lp-images.md を参照。
+const IMG = `${import.meta.env.BASE_URL}images`;
 
 const ASSETS: Record<string, string> = {
-  "39-5":   `${CDN}/39-5_f3b0b771.webp`,
-  "39-20":  `${CDN}/39-20_eabab979.webp`,
-  "39-22":  `${CDN}/39-22_4a4060e8.webp`,
-  "39-24":  `${CDN}/39-24_5c40b417.webp`,
-  "39-26":  `${CDN}/39-26_cc73bb24.webp`,
-  "39-28":  `${CDN}/39-28_be996e34.webp`,
-  "39-30":  `${CDN}/39-30_3cc769c9.webp`,
-  "39-32":  `${CDN}/39-32_4213ae40.webp`,
-  // Voice_S SNS口コミ写真グリッド (39-42〜64 + 64-xxx)
-  "39-42":  `${CDN}/39-42_5a1e8d38.webp`,
-  "39-48":  `${CDN}/39-48_089e74c3.webp`,
-  "39-50":  `${CDN}/39-50_cc5e977d.webp`,
-  "39-52":  `${CDN}/39-52_1ccad18b.webp`,
-  "39-54":  `${CDN}/39-54_8759d2b9.webp`,
-  "39-56":  `${CDN}/39-56_5d7bd820.webp`,
-  "39-58":  `${CDN}/39-58_dea3246e.webp`,
-  "39-60":  `${CDN}/39-60_9f5cc139.webp`,
-  "39-62":  `${CDN}/39-62_682fafd3.webp`,
-  "39-64":  `${CDN}/39-64_e7f290b3.webp`,
-  // 新しい写真（ユーザー提供）
-  "photo1": `${CDN}/photo1_2bfef1e8.png`,
-  "photo2": `${CDN}/photo2_3aa4469e.png`,
-  "photo3": `${CDN}/photo3_e81c79a5.png`,
-  "photo6": `${CDN}/photo6_ec31b51d.png`,
-  "photo7": `${CDN}/photo7_5a4d141c.png`,
-  "photo8": `${CDN}/photo8_286888a1.png`,
-  "photo9": `${CDN}/photo9_194fa7db.png`,
-  // ２ショット写真（row2, col4 = 右端真ん中）
-  "photo2shot": `${CDN}/２ショット_f3f1a6ef.png`,
-  // 新しい２ショット写真（row2, col4に使用）
-  "photo2shot2": `https://d2xsxph8kpxj0f.cloudfront.net/310519663410806327/JA5n7xr5WMnAweWKrFvH5o/２ショット_6c446dbb.png`,
-  // こだわりセクション
-  "39-106": `${CDN}/39-106_483b2125.webp`,
-  "39-111": `${CDN}/39-111_4a617ff1.webp`,
-  "39-115": `${CDN}/39-115_7370db64.webp`,
-  // スタッフ写真
-  "39-128": `${CDN}/39-128_b0131fdb.webp`,
-  // 店舗情報
-  "39-181": `${CDN}/39-181_d53581e8.webp`,
-  // BOOK特典
-  "39-235": `${CDN}/39-235_83ee64cf.webp`,
-  // 当店のダイエットが成功する理由
-  "39-251": `${CDN}/39-251_95bc8772.webp`,
-  "39-256": `${CDN}/39-256_3c669ddf.webp`,
-  "39-261": `${CDN}/39-261_8acc2bf5.webp`,
-  "39-262": `${CDN}/39-262_a668dfeb.webp`,
-  "39-268": `${CDN}/39-268_7c561a2a.webp`,
-  "39-269": `${CDN}/39-269_ecb89d04.webp`,
-  "39-270": `${CDN}/39-270_e6580ca7.webp`,
-  "39-271": `${CDN}/39-271_7f8ced00.webp`,
-  // スタッフ顔写真
-  "44-289": `${CDN}/44-289_dab1e574.webp`,  // 山崎スタッフ
-  "44-290": `${CDN}/44-290_ba5e19f8.webp`,  // 院長池本
-  // 施術写真（こだわりセクション用）
-  "44-285": `${CDN}/44-285_2b55f5a9.webp`,
-  "44-286": `${CDN}/44-286_e6c147c6.webp`,
-  "44-287": `${CDN}/44-287_bab70f28.webp`,
-  "44-288": `${CDN}/44-288_f4a80c15.webp`,
-  "44-291": `${CDN}/44-291_fc2f52cd.webp`,
-  "44-292": `${CDN}/44-292_c48631b2.webp`,
-  // 書籍
-  "44-282": `${CDN}/44-282_019809a9.webp`,
-  // 国家資格
-  "62-3":   `${CDN}/62-3_5da58225.webp`,
-  // 64-xxx SNS口コミ写真
-  "64-16":  `${CDN}/64-16_dbc7426a.webp`,
-  "64-17":  `${CDN}/64-17_484dc6f0.webp`,
-  "64-18":  `${CDN}/64-18_071344e8.webp`,
-  "64-19":  `${CDN}/64-19_779bb574.webp`,
-  "64-20":  `${CDN}/64-20_53f425d3.webp`,
-  "64-21":  `${CDN}/64-21_31851795.webp`,
-  "64-22":  `${CDN}/64-22_9318bc7d.webp`,
-  "64-23":  `${CDN}/64-23_22998868.webp`,
-  "64-24":  `${CDN}/64-24_4ea2e2cc.webp`,
-  "64-25":  `${CDN}/64-25_73392cb7.webp`,
-  "64-26":  `${CDN}/64-26_e231e944.webp`,
-  "64-27":  `${CDN}/64-27_d841e149.webp`,
-  // LINE QRコード
-  "line-qr": `${CDN}/line-qr_72289f0c.png`,
+  "39-5":       `${IMG}/fv.webp`,  // ファーストビュー（ページ最上部の大きなビジュアル）
+  "39-20":      `${IMG}/ba-01.webp`,  // ビフォーアフター 50代② -10.8kg
+  "39-22":      `${IMG}/ba-02.webp`,  // ビフォーアフター 40代 -8.8kg
+  "39-24":      `${IMG}/ba-03.webp`,  // ビフォーアフター 40代③ -8.9kg
+  "39-26":      `${IMG}/ba-04.webp`,  // ビフォーアフター 30代② -10kg
+  "39-28":      `${IMG}/ba-05.webp`,  // ビフォーアフター 50代 -7.5kg
+  "39-30":      `${IMG}/ba-06.webp`,  // ビフォーアフター 50代② -14.9kg
+  "39-32":      `${IMG}/ba-07.webp`,  // ビフォーアフター 40代② -8.1kg
+  "photo1":     `${IMG}/voice-01.png`,  // 口コミ写真グリッド 1行目1列目（施術写真1）
+  "photo2":     `${IMG}/voice-02.png`,  // 口コミ写真グリッド 1行目2列目（施術写真2）
+  "photo3":     `${IMG}/voice-03.png`,  // 口コミ写真グリッド 1行目3列目（施術写真3）
+  "photo6":     `${IMG}/voice-04.png`,  // 口コミ写真グリッド 1行目4列目（施術写真4）
+  "photo7":     `${IMG}/voice-05.png`,  // 口コミ写真グリッド 2行目1列目（施術写真5）
+  "photo8":     `${IMG}/voice-06.png`,  // 口コミ写真グリッド 2行目2列目（施術写真6）
+  "photo9":     `${IMG}/voice-07.png`,  // 口コミ写真グリッド 2行目3列目（施術写真7）
+  "photo2shot2":`${IMG}/voice-08.png`,  // 口コミ写真グリッド 2行目4列目（２ショット写真）
+  "64-24":      `${IMG}/voice-09.webp`,  // 口コミ写真グリッド 3行目1列目
+  "64-16":      `${IMG}/voice-10.webp`,  // 口コミ写真グリッド 3行目2列目
+  "photo2shot": `${IMG}/voice-11.png`,  // 口コミ写真グリッド 3行目3列目（２ショット写真・旧）
+  "64-18":      `${IMG}/voice-12.webp`,  // 口コミ写真グリッド 3行目4列目
+  "39-106":     `${IMG}/kodawari-01.webp`,  // ３つのこだわり 01：個室のプライベート空間
+  "39-111":     `${IMG}/kodawari-02.webp`,  // ３つのこだわり 02：個別プランのご提案
+  "39-115":     `${IMG}/kodawari-03.webp`,  // ３つのこだわり 03：全身美容整体
+  "39-128":     `${IMG}/staff-ando.webp`,  // スタッフ紹介 安東（丸くトリミングされる顔写真）
+  "44-289":     `${IMG}/staff-yamazaki.webp`,  // スタッフ紹介 山崎 雅弘（丸くトリミングされる顔写真）
+  "44-290":     `${IMG}/staff-ikemoto.webp`,  // スタッフ紹介 院長 池本 有佑（丸くトリミングされる顔写真）
+  "39-181":     `${IMG}/shop-exterior.webp`,  // 店舗情報の店舗外観写真
+  "44-282":     `${IMG}/book.webp`,  // BOOK特典「1週間で痩せ体質になるダイエット」の書影
+  "39-251":     `${IMG}/reason-01.webp`,  // 成功する理由１：太った理由を徹底分析（カウンセリング写真）
+  "39-256":     `${IMG}/reason-02.webp`,  // 成功する理由２：痩身整体（施術写真）
+  "39-261":     `${IMG}/reason-03.webp`,  // 成功する理由３：マンツーマン食事サポート（食事写真）
+  "62-3":       `${IMG}/reason-04.webp`,  // 成功する理由４：国家資格 柔道整復師
+  "line-qr":    `${IMG}/line-qr.png`,  // LINE友だち追加ページのQRコード
 };
 
 const LINE_URL = "https://lin.ee/XoPtWqp";

@@ -28,6 +28,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Check bundled images
+        continue-on-error: true
+        run: node scripts/check-images.mjs
+
       - name: Build
         run: VITE_BASE_PATH=/ikkyuu-diet-lp/ pnpm run build:pages
         env:
